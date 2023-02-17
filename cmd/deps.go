@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
+	"github.com/byuoitav/db-replicator/replication"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -43,4 +46,20 @@ func buildLogger(lvl string) *zap.Logger {
 	}
 
 	return log
+}
+
+func readConfig(filepath string) (*replication.ReplicationConfig, error) {
+	// check if config file exists
+	b, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %s", err.Error())
+	}
+
+	var config replication.ReplicationConfig
+	err = json.Unmarshal(b, &config)
+	if err != nil {
+		return nil, fmt.Errorf("config file in an invalid format: %s", err.Error())
+	}
+
+	return &config, nil
 }

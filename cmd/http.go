@@ -9,6 +9,7 @@ import (
 )
 
 func runHttpServer(status chan error, port string, replicator *replication.DBReplicator) {
+	replicator.Log.Info("building http server")
 	router := gin.Default()
 
 	apiRoute := router.Group("")
@@ -19,7 +20,7 @@ func runHttpServer(status chan error, port string, replicator *replication.DBRep
 		MaxHeaderBytes: 1021 * 10,
 	}
 
-	replicator.Log.Info("starting http server")
+	replicator.Log.Info("running http server")
 	err := router.Run(server.Addr)
 
 	status <- fmt.Errorf(err.Error())

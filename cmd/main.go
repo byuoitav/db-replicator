@@ -7,22 +7,27 @@ import (
 )
 
 func main() {
-	var logLevel, port string
-	pflag.StringVarP(&port, "port", "p", "7012", "port on which to run the http server")
+	var logLevel, port, configPath string
+	pflag.StringVarP(&port, "port", "p", "7012", "Port on which to run the http server")
 	pflag.StringVarP(&logLevel, "log", "l", "Info", "Initial log level")
+	pflag.StringVarP(&configPath, "config", "c", "", "File path to replication config file")
 	pflag.Parse()
 
 	port = ":" + port
 	log := buildLogger(logLevel)
-
-	replicator := &replication.DBReplicator{
-		Log: log,
+	config, err := readConfig(configPath)
+	if err != nil {
+		log.Fatal("cannot read config", zap.Error(err))
 	}
+
+	log.Info("building db replicator from config")
+	replicator := replication.BuildReplicatorFromConfig(log, config)
 
 	httpStatus := make(chan error)
 	go runHttpServer(httpStatus, port, replicator)
 
 	replicatorStatus := make(chan error)
+	go replicator.StartReplication(replicatorStatus)
 
 	select {
 	case s := <-httpStatus:
