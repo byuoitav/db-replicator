@@ -98,7 +98,7 @@ func (dbr *DBReplicator) runFullReplication() error {
 
 func (dbr *DBReplicator) doReplication(job *replJob) error {
 	dbr.Log.Debug("running replication", zap.String("database", job.Database))
-	return nil
+	return dbr.postReplication(job)
 }
 
 func (db *replDB) CheckConnection() (bool, error) {
