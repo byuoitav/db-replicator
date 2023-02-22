@@ -6,22 +6,75 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"go.uber.org/zap"
 )
 
 type replicationDocument struct {
-	ID           string `json:"_id"`
-	Source       string `json:"source"`
-	Target       string `json:"target"`
-	CreateTarget bool   `json:"create_target"`
-	Continuous   bool   `json:"continuous"`
+	ID           string        `json:"_id"`
+	Source       string        `json:"source"`
+	Target       replDocTarget `json:"target"`
+	CreateTarget bool          `json:"create_target"`
+	Continuous   bool          `json:"continuous"`
+}
+
+type replDocTarget struct {
+	URL  string      `json:"url"`
+	Auth replDocAuth `json:"auth"`
+}
+
+type replDocAuth struct {
+	Credentials replDocCredentials `json:"basic"`
+}
+
+type replDocCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type errorResponse struct {
 	Error  string `json:"error"`
 	Reason string `json:"reason"`
+}
+
+func (dbr *DBReplicator) checkReplication(job *replJob) (string, error) {
+	dbr.Log.Debug("checking replication status", zap.String("database", job.Database))
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%v/_scheduler/docs/_replicator/%v", dbr.Source.Address, job.Database), nil)
+	if err != nil {
+		dbr.Log.Debug("failed to build request to scheduler", zap.String("database", job.Database))
+		return "", fmt.Errorf("failed to create http GET request | %v", err.Error())
+	}
+
+	req.SetBasicAuth(dbr.Source.Username, dbr.Source.Password)
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%v", err.Error())
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		dbr.Log.Debug("failed to read response body from status request", zap.String("database", job.Database), zap.Error(err))
+		return "", fmt.Errorf("could not read body on http response | %v", err.Error())
+	}
+
+	if resp.StatusCode/100 == 2 {
+
+		return "", nil
+	}
+
+	var rError errorResponse
+	err = json.Unmarshal(body, &rError)
+	if err != nil {
+		dbr.Log.Debug("failed to unmarshal non-200 response body from status request", zap.String("database", job.Database), zap.Error(err))
+		return "", fmt.Errorf("could not unmarshal body on non-200 http response | %v", err.Error())
+	}
+
+	dbr.Log.Error("failed to check replication status", zap.String("error", rError.Error), zap.String("description", rError.Reason))
+
+	return "", nil
 }
 
 func (dbr *DBReplicator) postReplication(job *replJob) error {
@@ -69,21 +122,18 @@ func (dbr *DBReplicator) postReplication(job *replJob) error {
 }
 
 func (dbr *DBReplicator) generateReplicationDocument(job *replJob) ([]byte, error) {
-	source, err := dbr.Source.getAddressWithCredentials()
-	if err != nil {
-		dbr.Log.Debug("failed to aggregate source credentials", zap.Error(err))
-		return nil, fmt.Errorf("cannot create replication doc: %s", err.Error())
-	}
-	target, err := dbr.Target.getAddressWithCredentials()
-	if err != nil {
-		dbr.Log.Debug("failed to aggregate target credentials", zap.Error(err))
-		return nil, fmt.Errorf("cannot create replication doc: %s", err.Error())
-	}
-
 	doc := replicationDocument{
-		ID:           "auto_" + job.Database,
-		Source:       source + "/" + job.Database,
-		Target:       target + "/" + job.Database,
+		ID:     "auto_" + job.Database,
+		Source: dbr.Source.Address + "/" + job.Database,
+		Target: replDocTarget{
+			URL: dbr.Target.Address + "/" + job.Database,
+			Auth: replDocAuth{
+				Credentials: replDocCredentials{
+					Username: dbr.Target.Username,
+					Password: dbr.Target.Password,
+				},
+			},
+		},
 		CreateTarget: false,
 		Continuous:   job.Continuous,
 	}
@@ -94,18 +144,4 @@ func (dbr *DBReplicator) generateReplicationDocument(job *replJob) ([]byte, erro
 	}
 
 	return b, nil
-}
-
-// add credentials to db address func (db *replDB)
-func (db *replDB) getAddressWithCredentials() (string, error) {
-	if db.Address == "" || db.Username == "" || db.Password == "" {
-		return "", fmt.Errorf("missing database credentials")
-	}
-
-	addr := strings.Split(db.Address, "://")
-	if len(addr) < 2 {
-		return "", fmt.Errorf("database address missing protocol")
-	}
-
-	return fmt.Sprintf("%v://%v:%v@%v", addr[0], db.Username, db.Password, addr[1]), nil
 }

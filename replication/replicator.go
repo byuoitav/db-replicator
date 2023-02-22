@@ -98,6 +98,9 @@ func (dbr *DBReplicator) runFullReplication() error {
 
 func (dbr *DBReplicator) doReplication(job *replJob) error {
 	dbr.Log.Debug("running replication", zap.String("database", job.Database))
+
+	//check if job is already running/enqueued
+
 	return dbr.postReplication(job)
 }
 
