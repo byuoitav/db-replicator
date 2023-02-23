@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -37,10 +38,23 @@ type errorResponse struct {
 	Reason string `json:"reason"`
 }
 
+type replicationState struct {
+	DB         string                 `json:"database"`
+	DocID      string                 `json:"doc_id"`
+	ErrorCount int                    `json:"error_count"`
+	ID         string                 `json:"id"`
+	Info       map[string]interface{} `json:"info"`
+	Updated    time.Time              `json:"last_updated"`
+	Start      time.Time              `json:"start_time"`
+	Source     string                 `json:"source"`
+	Target     string                 `json:"target"`
+	State      string                 `json:"state"`
+}
+
 func (dbr *DBReplicator) checkReplication(job *replJob) (string, error) {
 	dbr.Log.Debug("checking replication status", zap.String("database", job.Database))
 
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%v/_scheduler/docs/_replicator/%v", dbr.Source.Address, job.Database), nil)
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%v/_scheduler/docs/_replicator/%v%v", dbr.Source.Address, "auto_", job.Database), nil)
 	if err != nil {
 		dbr.Log.Debug("failed to build request to scheduler", zap.String("database", job.Database))
 		return "", fmt.Errorf("failed to create http GET request | %v", err.Error())
@@ -61,8 +75,15 @@ func (dbr *DBReplicator) checkReplication(job *replJob) (string, error) {
 	}
 
 	if resp.StatusCode/100 == 2 {
+		var status replicationState
+		err = json.Unmarshal(body, &status)
+		if err != nil {
+			dbr.Log.Debug("failed to unmarshal replication state", zap.String("database", job.Database), zap.Error(err))
+			return "", fmt.Errorf("could not unmarshal body on http response | %v", err.Error())
+		}
 
-		return "", nil
+		dbr.Log.Debug("successfully retrieved replication state", zap.String("database", job.Database), zap.String("state", status.State))
+		return status.State, nil
 	}
 
 	var rError errorResponse
@@ -78,6 +99,8 @@ func (dbr *DBReplicator) checkReplication(job *replJob) (string, error) {
 }
 
 func (dbr *DBReplicator) postReplication(job *replJob) error {
+	dbr.Log.Debug("posting replication doc", zap.String("database", job.Database))
+
 	doc, err := dbr.generateReplicationDocument(job)
 	if err != nil {
 		return fmt.Errorf("%v", err.Error())

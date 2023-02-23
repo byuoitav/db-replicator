@@ -33,8 +33,8 @@ func (dbr *DBReplicator) ManualReplicationHandler(c *gin.Context) {
 
 	err := dbr.runFullReplication()
 	if err != nil {
-		dbr.Log.Warn("")
-		c.JSON(http.StatusInternalServerError, "replication failed to start")
+		dbr.Log.Error("failure during manual replication", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, "full replication failed to start")
 		return
 	}
 
@@ -68,10 +68,7 @@ func (dbr *DBReplicator) StartReplication(status chan error) {
 func (dbr *DBReplicator) runReplicationIntervalLoop() error {
 	for {
 
-		err := dbr.runFullReplication()
-		if err != nil {
-
-		}
+		dbr.runFullReplication()
 
 		dbr.Log.Debug("waiting", zap.Int("Time Interval (min)", dbr.timeInterval/60))
 		time.Sleep(time.Duration(dbr.timeInterval))
@@ -99,7 +96,15 @@ func (dbr *DBReplicator) runFullReplication() error {
 func (dbr *DBReplicator) doReplication(job *replJob) error {
 	dbr.Log.Debug("running replication", zap.String("database", job.Database))
 
-	//check if job is already running/enqueued
+	status, err := dbr.checkReplication(job)
+	if err != nil {
+		return err
+	}
+
+	if status == "running" || status == "started" || status == "added" {
+		dbr.Log.Debug("replication already running", zap.String("database", job.Database), zap.String("status", status))
+		return nil
+	}
 
 	return dbr.postReplication(job)
 }
