@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/byuoitav/db-replicator/replication"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
@@ -19,6 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal("cannot read config", zap.Error(err))
 	}
+	log.Debug("", zap.String("config", fmt.Sprintf("%+v", config)))
 
 	log.Info("building db replicator from config")
 	replicator := replication.BuildReplicatorFromConfig(log, config)

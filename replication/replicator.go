@@ -13,7 +13,7 @@ type DBReplicator struct {
 	Log          *zap.Logger
 	Source       *replDB
 	Target       *replDB
-	timeInterval int
+	timeInterval time.Duration
 	jobs         []replJob
 }
 
@@ -26,24 +26,19 @@ type replDB struct {
 type replJob struct {
 	Database   string
 	Continuous bool
+	IDSelector string
 }
 
 func (dbr *DBReplicator) ManualReplicationHandler(c *gin.Context) {
 	dbr.Log.Debug("manual replication endpoint called")
 
-	err := dbr.runFullReplication()
-	if err != nil {
-		dbr.Log.Error("failure during manual replication", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, "full replication failed to start")
-		return
-	}
+	go dbr.runFullReplication()
 
-	dbr.Log.Debug("manual replication start successful")
 	c.JSON(http.StatusOK, "replication started")
 }
 
 func (dbr *DBReplicator) StartReplication(status chan error) {
-	dbr.Log.Info("starting replication cycle", zap.Int("Time Interval (min)", dbr.timeInterval/60))
+	dbr.Log.Info("starting replication cycle", zap.Float64("Time Interval (min)", dbr.timeInterval.Minutes()))
 	sourceReachable, targetReachable, err := false, false, error(nil)
 
 	dbr.Log.Info("checking database accessibility...")
@@ -70,15 +65,14 @@ func (dbr *DBReplicator) runReplicationIntervalLoop() error {
 
 		dbr.runFullReplication()
 
-		dbr.Log.Debug("waiting", zap.Int("Time Interval (min)", dbr.timeInterval/60))
-		time.Sleep(time.Duration(dbr.timeInterval))
+		dbr.Log.Debug("waiting", zap.Float64("Time Interval (min)", dbr.timeInterval.Minutes()))
+		time.Sleep(dbr.timeInterval)
 	}
 
 	return fmt.Errorf("replication jobs failed")
 }
 
 func (dbr *DBReplicator) runFullReplication() error {
-	// start new replication job for each job in list
 	replFailure := false
 	for _, job := range dbr.jobs {
 		err := dbr.doReplication(&job)
@@ -106,7 +100,18 @@ func (dbr *DBReplicator) doReplication(job *replJob) error {
 		return nil
 	}
 
-	return dbr.postReplication(job)
+	conflict, err := dbr.postReplication(job)
+	for conflict {
+		//delete and repost
+		err = dbr.deleteReplication(job)
+		if err != nil {
+			return err
+		}
+
+		conflict, err = dbr.postReplication(job)
+	}
+
+	return err
 }
 
 func (db *replDB) CheckConnection() (bool, error) {
