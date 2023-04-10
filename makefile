@@ -40,28 +40,28 @@ build: deps
 
 	@echo
 	@echo Building db-replicator for linux-amd64
-	@cd cmd/ && env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o ../dist/db-replicator-linux-amd64
+	@cd cmd/ && env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o ../dist/${NAME}-linux-amd64
 
 	@echo
 	@echo Building db-replicator for linux-arm
-	@cd cmd/ && env CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -v -o ../dist/db-replicator-linux-arm
+	@cd cmd/ && env CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -v -o ../dist/${NAME}-linux-arm
 
 docker: clean build
 ifeq (${COMMIT_HASH}, ${TAG})
 	@echo Building dev containers with tag ${COMMIT_HASH}
 
-	@echo Building container ${DOCKER_PKG}/db-replicator-dev:${COMMIT_HASH}
-	@docker build -f dockerfile --build-arg NAME=db-replicator-linux-amd64 -t ${DOCKER_PKG}/db-replicator-dev:${COMMIT_HASH} dist
+	@echo Building container ${DOCKER_PKG}/${NAME}-dev:${COMMIT_HASH}
+	@docker buildx build -f dockerfile --build-arg NAME=${NAME}-linux-amd64 -t ${DOCKER_PKG}/${NAME}-dev:${COMMIT_HASH} dist
 else ifneq ($(shell echo ${TAG} | grep -x -E ${DEV_TAG_REGEX}),)
 	@echo Building dev containers with tag ${TAG}
 
-	@echo Building container ${DOCKER_PKG}/db-replicator-dev:${TAG}
-	@docker build -f dockerfile --build-arg NAME=db-replicator-linux-amd64 -t ${DOCKER_PKG}/db-replicator-dev:${TAG} dist
+	@echo Building container ${DOCKER_PKG}/${NAME}-dev:${TAG}
+	@docker buildx build -f dockerfile --build-arg NAME=${NAME}-linux-amd64 -t ${DOCKER_PKG}/${NAME}-dev:${TAG} dist
 else ifneq ($(shell echo ${TAG} | grep -x -E ${PRD_TAG_REGEX}),)
 	@echo Building prd containers with tag ${TAG}
 
-	@echo Building container ${DOCKER_PKG}/db-replicator:${TAG}
-	@docker build -f dockerfile --build-arg NAME=db-replicator-linux-amd64 -t ${DOCKER_PKG}/db-replicator:${TAG} dist
+	@echo Building container ${DOCKER_PKG}/${NAME}:${TAG}
+	@docker buildx build -f dockerfile --build-arg NAME=${NAME}-linux-amd64 -t ${DOCKER_PKG}/${NAME}:${TAG} dist
 endif
 
 deploy: docker
@@ -71,18 +71,18 @@ deploy: docker
 ifeq (${COMMIT_HASH}, ${TAG})
 	@echo Pushing dev containers with tag ${COMMIT_HASH}
 
-	@echo Pushing container ${DOCKER_PKG}/db-replicator-dev:${COMMIT_HASH}
-	@docker push ${DOCKER_PKG}/db-replicator-dev:${COMMIT_HASH}
+	@echo Pushing container ${DOCKER_PKG}/${NAME}-dev:${COMMIT_HASH}
+	@docker push ${DOCKER_PKG}/${NAME}-dev:${COMMIT_HASH}
 else ifneq ($(shell echo ${TAG} | grep -x -E ${DEV_TAG_REGEX}),)
 	@echo Pushing dev containers with tag ${TAG}
 
-	@echo Pushing container ${DOCKER_PKG}/db-replicator-dev:${TAG}
-	@docker push ${DOCKER_PKG}/db-replicator-dev:${TAG}
+	@echo Pushing container ${DOCKER_PKG}/${NAME}-dev:${TAG}
+	@docker push ${DOCKER_PKG}/${NAME}-dev:${TAG}
 else ifneq ($(shell echo ${TAG} | grep -x -E ${PRD_TAG_REGEX}),)
 	@echo Pushing prd containers with tag ${TAG}
 
-	@echo Pushing container ${DOCKER_PKG}/db-replicator:${TAG}
-	@docker push ${DOCKER_PKG}/db-replicator:${TAG}
+	@echo Pushing container ${DOCKER_PKG}/${NAME}:${TAG}
+	@docker push ${DOCKER_PKG}/${NAME}:${TAG}
 endif
 
 clean:
