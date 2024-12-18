@@ -1,4 +1,4 @@
-# Couch Database Replicator
+# Backup Couch Database Replicator
 Service for replicating a source database to a target database on a set time interval.
 
 Service requires a json configuration document.
